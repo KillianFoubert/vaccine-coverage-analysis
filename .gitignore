@@ -1,0 +1,21 @@
+# Raw data (regenerable, can be heavy)
+data/raw/
+
+# Generated outputs (regenerable)
+output/
+
+# R environment
+.Rhistory
+.RData
+.Rproj.user/
+*.Rproj
+renv/
+.Renviron
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Reports cache
+*_files/
+*_cache/
