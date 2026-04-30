@@ -1,0 +1,76 @@
+<div class="scroll-progress">
+  <div class="scroll-progress-bar" id="scrollProgressBar"></div>
+</div>
+
+<div class="report-hero">
+  <div class="lang-switch">
+    🇫🇷 <a href="index_fr.html">Version française</a>
+  </div>
+
+  <div class="hero-content">
+    <div class="hero-eyebrow">
+      Global Health · Panel Econometrics &amp; Causal Inference
+    </div>
+
+    <h1 class="hero-title">
+      How the world <em>vaccinated</em><br>
+      its children, 1980&ndash;2023
+    </h1>
+
+    <p class="hero-subtitle">
+      A reproducible analysis of childhood DTP3 vaccination coverage across 195 countries, exploring the determinants of progress, the disruption from COVID-19, and the geography of who is left behind.
+    </p>
+
+    <div class="hero-stats">
+      <div class="hero-stat">
+        <div class="hero-stat-number">195</div>
+        <div class="hero-stat-label">Countries observed across four decades</div>
+      </div>
+      <div class="hero-stat">
+        <div class="hero-stat-number">8,580</div>
+        <div class="hero-stat-label">Country-year observations in the panel</div>
+      </div>
+      <div class="hero-stat">
+        <div class="hero-stat-number">4</div>
+        <div class="hero-stat-label">Complementary methodologies applied</div>
+      </div>
+      <div class="hero-stat">
+        <div class="hero-stat-number">−1.04 pp</div>
+        <div class="hero-stat-label">Estimated COVID-19 disruption per SD of stringency</div>
+      </div>
+    </div>
+
+    <div class="hero-meta">
+      <div class="hero-meta-item">
+        <span class="hero-meta-label">Author</span>
+        <span class="hero-meta-value">Killian Foubert, PhD</span>
+      </div>
+      <div class="hero-meta-item">
+        <span class="hero-meta-label">Methods</span>
+        <span class="hero-meta-value">Panel FE · Mixed models · DiD</span>
+      </div>
+      <div class="hero-meta-item">
+        <span class="hero-meta-label">Stack</span>
+        <span class="hero-meta-value">R · fixest · lme4 · sf</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="hero-scroll">Scroll to read</div>
+</div>
+
+<script>
+(function() {
+  function updateProgress() {
+    var bar = document.getElementById('scrollProgressBar');
+    if (!bar) return;
+    var scrollTop = window.scrollY || document.documentElement.scrollTop;
+    var height = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+    var pct = height > 0 ? (scrollTop / height) * 100 : 0;
+    bar.style.width = pct + '%';
+  }
+  window.addEventListener('scroll', updateProgress, { passive: true });
+  window.addEventListener('resize', updateProgress, { passive: true });
+  document.addEventListener('DOMContentLoaded', updateProgress);
+})();
+</script>

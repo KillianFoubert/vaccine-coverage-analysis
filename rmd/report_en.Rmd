@@ -1,0 +1,587 @@
+---
+title: "Global Childhood Vaccination Coverage, 1980-2023"
+author: "Killian Foubert, PhD"
+date: "`r format(Sys.Date(), '%B %Y')`"
+output:
+  html_document:
+    toc: false
+    number_sections: false
+    code_folding: hide
+    df_print: paged
+    css: assets/styles.css
+    includes:
+      before_body: assets/hero_en.html
+    self_contained: true
+    mathjax: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  message = FALSE,
+  warning = FALSE,
+  fig.align = "center",
+  fig.width = 8,
+  fig.height = 5,
+  dpi = 150
+)
+
+library(here)
+library(dplyr)
+library(tidyr)
+library(readr)
+library(ggplot2)
+library(knitr)
+library(kableExtra)
+library(base64enc)
+library(htmltools)
+
+panel <- readRDS(here("data", "processed", "panel.rds"))
+
+# Helper: render a figure with caption ABOVE the image (table-like style)
+fig_with_caption <- function(path, caption) {
+  full_path <- here("output", "figures", path)
+  # Encode image as base64 for self-contained HTML
+  img_b64 <- base64enc::base64encode(full_path)
+  ext <- tools::file_ext(full_path)
+  htmltools::HTML(sprintf(
+    '<figure class="figure-with-caption-above">
+       <figcaption class="figure-caption-top">%s</figcaption>
+       <img src="data:image/%s;base64,%s" alt="%s" />
+     </figure>',
+    caption, ext, img_b64, caption
+  ))
+}
+```
+
+# Executive summary
+
+This project uses a country-year panel of immunization coverage from 1980 to 2023 to:
+
+- **Describe** global and regional trends in DTP3 coverage (the WHO benchmark indicator);
+- **Identify the determinants** of coverage using two-way fixed-effects and mixed-effects models;
+- **Quantify the COVID-19 shock** via a continuous-treatment difference-in-differences design;
+- **Map** geographic disparities through global choropleth visualizations.
+
+**Key methods demonstrated:** panel fixed effects (`fixest`), mixed models (`lme4`), causal inference with DiD and parallel-trends validation, spatial visualization (`sf`), and cluster-robust inference.
+
+# Introduction
+
+Immunization is one of the most cost-effective public health interventions ever developed. The World Health Organization's Expanded Programme on Immunization (EPI), launched in 1974, has contributed to preventing an estimated 154 million deaths over the past five decades. Childhood immunization coverage remains a key indicator of primary health system performance.
+
+## Why DTP3 as the reference indicator?
+
+Among available indicators, the third dose of diphtheria-tetanus-pertussis (DTP3) stands out as the international benchmark. A child with complete DTP3 coverage has had at least three distinct contacts with the health system before their first birthday, which jointly measures:
+
+- Geographic accessibility of health services;
+- Continuity of care (not just an initial visit);
+- Household demand for immunization services.
+
+For these reasons, WHO tracks DTP3 in all its annual statistical reports, and DTP3 < 80% is commonly used as a threshold identifying "left-behind" countries.
+
+## Research questions
+
+1. How has global DTP3 coverage evolved between 1980 and 2023, and what are the regional patterns?
+2. Which country-level factors explain variations in coverage, once country-specific heterogeneity is controlled for?
+3. How did the COVID-19 pandemic disrupt immunization services, and did response intensity mediate this effect?
+
+# Data
+
+## Three public sources
+
+The analysis combines three public, fully reproducible data sources:
+
+- **WUENIC** (WHO/UNICEF Estimates of National Immunization Coverage). The international reference dataset, jointly produced by WHO and UNICEF since 1980, covering ~195 countries. Accessed via the WHO Global Health Observatory API.
+- **WDI** (World Development Indicators, World Bank). Economic and demographic covariates: GDP per capita, health expenditure, urbanization, fertility, under-5 mortality. Accessed via the `WDI` R package.
+- **OxCGRT** (Oxford COVID-19 Government Response Tracker). Daily measures of national COVID-19 policy responses from January 2020 to December 2022. The composite Stringency Index is used as our continuous treatment variable.
+
+## Panel construction
+
+The three sources are merged into a rectangular country × year panel covering 195 countries from 1980 to 2023 (8,580 observations). Daily OxCGRT data are aggregated to yearly averages, requiring at least 60 valid observations per country-year. All countries are mapped to the six WHO regions (AFRO, AMRO, EMRO, EURO, SEARO, WPRO).
+
+```{r sample-summary}
+sample_stats <- panel %>%
+  filter(year >= 2000) %>%
+  summarise(
+    `Observations` = format(n(), big.mark = ","),
+    `Countries` = as.character(n_distinct(iso3)),
+    `Years` = paste0(min(year), "-", max(year)),
+    `WHO regions` = as.character(n_distinct(region_who, na.rm = TRUE)),
+    `DTP3 non-missing (%)` = sprintf("%.1f", 100 * mean(!is.na(dtp3))),
+    `Mean DTP3 coverage (%)` = sprintf("%.1f", mean(dtp3, na.rm = TRUE)),
+    `Countries below 80% (2023)` = as.character(
+      sum(year == 2023 & dtp3 < 80, na.rm = TRUE)
+    )
+  ) %>%
+  pivot_longer(everything(), names_to = "Statistic", values_to = "Value")
+
+kable(sample_stats, caption = "Table 1. Sample characteristics (2000-2023).") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"),
+                full_width = FALSE, position = "center")
+```
+
+# Descriptive analysis
+
+## Global trend
+
+```{r fig1}
+fig_with_caption("fig01_global_trend.png", "Figure 1. Global DTP3 coverage, 1980-2023. Average and median of national rates.")
+```
+
+Two patterns dominate the global trajectory. From 1980 onward, DTP3 coverage rose steadily, reflecting the cumulative impact of the Expanded Programme on Immunization (EPI) and, later, Gavi-funded campaigns. By the early 2010s, global mean coverage approached its plateau around 85%. Progress slowed thereafter, suggesting that further gains would require addressing more structural barriers in the remaining low-coverage countries. The 2020-2021 dip is clearly visible: the first significant global setback in four decades, attributable to the COVID-19 pandemic.
+
+## Regional heterogeneity
+
+```{r fig2}
+fig_with_caption("fig02_regional_trend.png", "Figure 2. DTP3 coverage by WHO region, 1980-2023.")
+```
+
+Regional decomposition reveals substantial heterogeneity in both levels and dynamics:
+
+- AFRO (Africa) began at ~65% in 2000 and progressed steadily to ~80%. The catch-up reflects massive investments by Gavi (the Vaccine Alliance) and national programs.
+- SEARO (South-East Asia) is the region that most benefited from recent decades' efforts: from 80% around 2000 to over 90% by 2019, driven by India's Mission Indradhanush.
+- EURO (Europe) has maintained stable high coverage (~94%) with minimal COVID disruption.
+- SEARO and WPRO experienced the most pronounced COVID dips, exactly the heterogeneity our DiD design will exploit.
+
+## COVID impact
+
+```{r fig3}
+fig_with_caption("fig03_covid_impact.png", "Figure 3. COVID-19 impact on DTP3 coverage by WHO region, 2018-2023.")
+```
+
+The pandemic did not affect all regions equally. SEARO dropped nearly 10 percentage points between 2019 and 2021, while EURO declined by less than 2 points. This cross-regional heterogeneity is a core motivation for the causal analysis below.
+
+## Left-behind countries
+
+```{r fig4}
+fig_with_caption("fig04_left_behind_trajectories.png", "Figure 4. Trajectories of countries with DTP3 < 70% in 2023.")
+```
+
+The "left-behind" group is not fixed: some countries are on a declining trajectory, others are gradually recovering. A static classification misses this dynamic, motivating the use of panel methods below.
+
+# Panel fixed-effects models
+
+We now move from descriptive analysis to identification of the structural determinants of DTP3 coverage. The panel structure of our data (195 countries × 24 years) enables us to control for time-invariant country characteristics (geography, colonial history, institutional quality, cultural norms) that confound cross-country comparisons.
+
+## Specification
+
+The outcome is DTP3 coverage (%) at the country-year level. We estimate three nested specifications on the restricted sample (2000-2023, $N = 4{,}467$ observations, 190 countries):
+
+$$
+\text{DTP3}_{it} = \beta_1 \ln(\text{GDP}_{it}) + \beta_2 \text{HealthExp}_{it} + \beta_3 \text{Urban}_{it} + \beta_4 \text{Fertility}_{it} + \alpha_i + \gamma_t + \varepsilon_{it}
+$$
+
+where $\alpha_i$ are country fixed effects and $\gamma_t$ are year fixed effects. Progressively adding these layers yields three specifications: pooled OLS (no FE), country FE only, and the reference two-way FE. Standard errors are clustered at the country level throughout, following the standard practice for panel data with persistent within-country shocks.
+
+## Results
+
+```{r fe-table}
+fe_results <- read_csv(here("output", "tables", "tab03_fixed_effects.csv"),
+                       show_col_types = FALSE)
+
+# Drop the redundant column 4 (identical to column 3 by construction)
+fe_table <- fe_results %>%
+  filter(model != "4. Two-way FE (reference)") %>%
+  filter(term %in% c("(Intercept)", "log_gdp_pc", "health_exp",
+                     "urban_pct", "fertility")) %>%
+  mutate(
+    sig = case_when(
+      p.value < 0.01 ~ "***",
+      p.value < 0.05 ~ "**",
+      p.value < 0.10 ~ "*",
+      TRUE ~ ""
+    ),
+    coef_str = ifelse(
+      is.na(estimate),
+      "—",
+      sprintf("<strong>%.2f%s</strong><br><span style=\"color:#8B8278;font-size:0.85em;\">(%.2f)</span>",
+              estimate, sig, std.error)
+    ),
+    term_label = recode(term,
+                        "(Intercept)" = "Constant",
+                        "log_gdp_pc" = "log(GDP per capita)",
+                        "health_exp" = "Health exp. (% GDP)",
+                        "urban_pct" = "Urban share (%)",
+                        "fertility" = "Fertility")
+  ) %>%
+  select(term_label, model, coef_str) %>%
+  pivot_wider(names_from = model, values_from = coef_str) %>%
+  rename(` ` = term_label)
+
+n_obs <- "4,467"
+n_countries <- "190"
+
+fe_extras <- tribble(
+  ~` `,                  ~`1. Pooled OLS`, ~`2. Country FE`, ~`3. Country + Year FE`,
+  "Country FE",          "—",              "✓",              "✓",
+  "Year FE",             "—",              "—",              "✓",
+  "Observations",        n_obs,            n_obs,            n_obs,
+  "Countries",           n_countries,      n_countries,      n_countries,
+  "R²",                  "0.395",          "0.777",          "0.795",
+  "Within R²",           "—",              "0.076",          "0.076"
+)
+
+fe_full <- bind_rows(fe_table, fe_extras)
+
+knitr::kable(fe_full, format = "html", escape = FALSE,
+             align = c("l", "c", "c", "c"),
+             caption = "Table 2. Panel fixed-effects regressions of DTP3 coverage on country-level covariates, 2000-2023.") %>%
+  kable_styling(bootstrap_options = c("hover"),
+                full_width = TRUE,
+                position = "left") %>%
+  row_spec(0, bold = TRUE) %>%
+  row_spec(6, extra_css = "border-top: 2px solid #B8A88E;") %>%
+  footnote(general = "Coefficients shown with cluster-robust standard errors (clustered at country level) in parentheses below each estimate. Significance: *** p < 0.01, ** p < 0.05, * p < 0.10.",
+           general_title = "",
+           escape = FALSE)
+```
+
+## Interpretation
+
+Two robust effects emerge across all specifications with country fixed effects.
+
+**Fertility (-5.80 pp, $p < 0.01$).** A one-unit increase in the total fertility rate, roughly one additional birth per woman, is associated with a **5.8-percentage-point decrease in DTP3 coverage within a country over time**. This is not a spurious cross-country correlation between poor and rich countries: the identification exploits variation *within the same country* as fertility transitions. The mechanism is plausible. Larger birth cohorts stretch the logistical capacity of primary care systems (cold chain, health worker availability, outreach reach), and the effect is economically meaningful.
+
+**Log GDP per capita (+5.71, $p < 0.01$).** A doubling of GDP per capita is associated with a 5.71 × ln(2) ≈ **4-percentage-point increase in coverage**. Critically, this coefficient is *larger* in the two-way FE specification than in the country-FE-only specification (4.15 → 5.71). This suggests that common temporal shocks (such as the COVID-19 pandemic, global Gavi campaigns, and international economic cycles) were correlated with cross-country GDP variation in ways that biased the coefficient downward in the simpler specification. Including year FEs is therefore not just methodological prudence: it meaningfully reshapes the economic interpretation.
+
+**Health expenditure and urbanization are not significant once country FEs are included.** This is substantively interesting rather than a null result. Their apparent effect in pooled OLS was entirely absorbed by time-invariant country characteristics. In practical terms: richer countries tend to spend more on health *and* have higher DTP3 coverage, but increasing one country's health expenditure over time does not mechanically translate into higher coverage. Institutional quality, system capacity, and governance likely mediate the relationship, none of which is captured by a simple expenditure ratio.
+
+## Methodological notes
+
+**Within-R² of 0.076** in the two-way FE specification may appear modest but is standard for panel models on public health outcomes. The country FEs absorb most between-country variation (R² jumps from 0.39 in pooled OLS to 0.80 with country FEs); what remains is the residual within-country variation that our covariates seek to explain.
+
+**Joint contribution of year FEs.** The within-R² is nearly identical between country-only FE (0.0759) and two-way FE (0.0758). Year FEs do not add explanatory power *after* accounting for the demographic-economic covariates, because those covariates (especially fertility) already capture global temporal trends. We nonetheless retain year FEs in the reference specification on identification grounds: they absorb common temporal shocks that would otherwise contaminate the estimates, as the change in the log GDP coefficient illustrates.
+
+**Cluster-robust standard errors** are used throughout, accounting for the fact that observations within the same country are not independent across years. This typically enlarges standard errors by 30 to 50% relative to naive heteroscedasticity-consistent SEs, and is the conservative choice for panel inference.
+
+# Who is left behind? A regional logit analysis
+
+The fixed-effects framework identifies *average* effects of covariates on continuous coverage. But a complementary question is: which countries are *structurally below* the WHO threshold of 80%? This is a binary classification question where panel FEs are less suitable. Structurally high-coverage countries (France, Sweden) and chronically low-coverage countries (Chad, Somalia) contribute no identifying variation.
+
+We therefore estimate a **pooled logit with regional fixed effects** on the same 2000-2023 panel:
+
+$$
+P(\text{LeftBehind}_{it} = 1) = \Lambda\left(\beta_1 \ln(\text{GDP}_{it}) + \beta_2 \text{HealthExp}_{it} + \beta_3 \text{Urban}_{it} + \beta_4 \text{Fertility}_{it} + \gamma_r + \delta_t\right)
+$$
+
+where $\text{LeftBehind}_{it} = 1$ if DTP3 < 80%, $\gamma_r$ are WHO region fixed effects (reference: EURO), and $\delta_t$ are year dummies. Standard errors are clustered at the country level.
+
+## Marginal effects
+
+Logit coefficients are log-odds and not directly interpretable. We report **average marginal effects (AME)** in percentage points, the estimated change in probability of being left-behind associated with a one-unit change in each covariate.
+
+```{r logit-marginal}
+margins_table <- read_csv(here("output", "tables", "tab05_logit_marginal_effects.csv"),
+                          show_col_types = FALSE) %>%
+  mutate(
+    factor = recode(factor,
+                    fertility = "Fertility (births/woman)",
+                    health_exp = "Health expenditure (% GDP)",
+                    log_gdp_pc = "log(GDP per capita)",
+                    urban_pct = "Urban share (%)"),
+    AME_pp = sprintf("%+.2f", AME_pp),
+    SE_pp = sprintf("%.2f", SE_pp),
+    z = sprintf("%.2f", z),
+    p = sprintf("%.3f", p)
+  ) %>%
+  select(`Covariate` = factor,
+         `AME (pp)` = AME_pp,
+         `SE` = SE_pp,
+         `z` = z,
+         `p-value` = p)
+
+kable(margins_table, caption = "Table 3. Average marginal effects on probability of DTP3 < 80%.") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"),
+                full_width = FALSE, position = "center") %>%
+  footnote(general = "Effects expressed in percentage points (pp). Standard errors clustered at country level.",
+           general_title = "")
+```
+
+## Interpretation
+
+The logit highlights four consistent predictors of being left behind, with implications directly relevant to targeting:
+
+**Fertility (+11.6 pp per additional birth per woman).** The dominant predictor. Increasing fertility from 1 to 2 births per woman, holding other covariates constant, raises the probability of being left-behind by approximately 11.6 percentage points (the AME is a local approximation around the sample mean; the actual effect of moving from very high to very low fertility is non-linear in the logit). Countries with very high fertility (Niger, Chad, Somalia) face structurally elevated risk, and this is a driver that no ministry of health can rapidly change.
+
+**Health expenditure (-2.2 pp per % GDP).** A one-percentage-point increase in the share of GDP devoted to health is associated with a 2.2-pp lower probability of being left-behind. **This variable was insignificant in the panel FE specification but is significant here.** The discrepancy is instructive: health expenditure helps separate left-behind from non-left-behind countries cross-sectionally (richer health systems are more likely to deliver above 80% coverage), but a country that marginally increases its health budget year over year does not see proportional gains. What matters more for *within-country* progress is how existing resources are allocated and whether delivery capacity is in place.
+
+**log(GDP per capita): -5.7 pp.** A doubling of GDP per capita reduces the probability of being left-behind by approximately 4 percentage points. Economically important, but smaller than the fertility effect.
+
+**Urbanization (+0.2 pp).** Small, barely significant, and positive, the opposite of the naive expectation. One interpretation: conditional on income and fertility, more urbanized countries face concentrated unvaccinated pockets (informal settlements, migrant populations) that offset the logistical advantages of urban density. This is a known finding in the immunization equity literature.
+
+## Why two complementary models?
+
+The panel FE and the logit answer different questions:
+
+- **Panel FE** exploits within-country variation over time ("when a country's fertility declines, does its DTP3 coverage rise?") and delivers effects that are closer to causal under standard assumptions.
+- **Logit with regional FE** exploits cross-country variation ("among today's countries, which ones are below 80%?") and delivers predictive effects useful for targeting and classification.
+
+Together they provide a richer picture than either alone: the panel FE reveals how coverage evolves within individual countries; the logit identifies which countries are at risk today. For policy audiences (ministries of health, INGOs, Gavi), the logit speaks directly to targeting. For academic audiences, the panel FE establishes the structural relationships.
+
+# Mixed-effects models: country-specific trajectories
+
+The fixed-effects framework treats each country as a unique entity, identifying *average* effects across all countries. But individual countries differ markedly in how their coverage evolves over time. Some progress rapidly (Rwanda, Bangladesh), some stagnate at high levels (France, Sweden), and some regress (Ukraine, Venezuela). To characterize this heterogeneity systematically, we now estimate a **linear mixed-effects model** with country-specific intercepts and slopes.
+
+## Specification
+
+We estimate three nested mixed models on the 2000-2023 sample (4,467 observations, 190 countries):
+
+$$
+\text{DTP3}_{it} = (\beta_0 + u_i) + (\beta_1 + v_i) \cdot t_{it} + \boldsymbol{\beta}^{\top} X_{it} + \varepsilon_{it}
+$$
+
+where $t_{it} = \text{year}_{it} - 2000$ is centered time (so $\beta_0$ is the intercept in year 2000), $u_i \sim N(0, \sigma_u^2)$ is the country-specific deviation in starting level, $v_i \sim N(0, \sigma_v^2)$ is the country-specific deviation in trajectory, and $X_{it}$ is the vector of time-varying covariates (specification M3).
+
+The mixed model exchanges some statistical robustness (it imposes a Gaussian distribution on country effects) for substantial interpretive gains. Unlike fixed-effects, it allows us to estimate *individual trajectories* for each country while leveraging information from the full panel, a technique known as *partial pooling*. Countries with noisy data are pulled toward the global mean, while countries with precise data retain their individual estimates.
+
+## Model selection
+
+We need to determine whether the added complexity is justified. Three nested specifications can be compared: M1 with only a random intercept per country, M2 adding a random slope on time, and M3 adding the full set of covariates. Table 4 reports their fit statistics.
+
+```{r mm-lrt}
+fit_metrics <- read_csv(here("output", "tables", "tab06_mixed_models_fit.csv"),
+                        show_col_types = FALSE)
+kable(fit_metrics, caption = "Table 4. Fit comparison across the three nested mixed-effects specifications.") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"),
+                full_width = FALSE, position = "center") %>%
+  footnote(general = "logLik = log-likelihood (higher is better fit). AIC and BIC are information criteria balancing fit against model complexity (lower is better). Differences of 10+ are typically considered decisive.",
+           general_title = "")
+```
+
+Both AIC and BIC drop substantially as we move from M1 to M2 to M3, indicating that each layer of complexity is justified by the data. To test this formally for the most consequential question, namely whether country trajectories really differ, we conduct a likelihood ratio test (LRT) comparing M1 (which assumes a single global slope) to M2 (which allows country-specific slopes). The null hypothesis is that the slope variance $\sigma_v^2$ equals zero, which would mean that all countries share the same trend.
+
+The LRT yields $\chi^2 = 1518.8$ with $p < 2.2 \times 10^{-16}$. The null is overwhelmingly rejected: country-specific slopes are not a statistical artifact, they capture real and substantial heterogeneity in trajectories. Imposing a single global trend would severely misrepresent the data.
+
+## Variance components
+
+Having validated the random-slopes structure, we now examine the estimated variance components in M3. These tell us how much country-to-country variation exists in starting levels and in trajectories.
+
+* **Intercept SD = 13.4 percentage points.** Substantial differences in baseline coverage levels across countries, consistent with the gap between high-coverage Europe (~95%) and conflict-affected regions (~35-50%).
+* **Slope SD = 0.633 points per year (≈ 6.3 points per decade).** Country trajectories vary widely around the global mean. Most countries fall within ±6 points per decade of the global trend, but some show much larger deviations.
+* **Intercept-slope correlation = -0.67.** Countries with lower starting coverage tend to progress faster. This is a strong convergence pattern, consistent with the catch-up dynamic documented in development health literature.
+* **Residual SD = 5.5 points.** Year-to-year deviation around each country's expected trajectory, capturing measurement noise and idiosyncratic shocks.
+
+## Country trajectories: BLUPs and ranking
+
+The mixed model produces *Best Linear Unbiased Predictors* (BLUPs) for each country, combining the global average trend with country-specific information. We multiply by 10 to express trajectories as "DTP3 points gained per decade."
+
+**Top 10 progressions (2000-2023):**
+
+```{r blups-top, results='asis'}
+slopes_table <- read_csv(here("output", "tables", "tab07_country_slopes.csv"),
+                         show_col_types = FALSE)
+slopes_top <- slopes_table %>%
+  arrange(desc(total_slope_per_decade)) %>%
+  head(10) %>%
+  select(iso3, region_who, dtp3_2000, dtp3_2023, total_slope_per_decade) %>%
+  mutate(
+    dtp3_2000 = sprintf("%.1f", dtp3_2000),
+    dtp3_2023 = sprintf("%.1f", dtp3_2023),
+    total_slope_per_decade = sprintf("%+.1f", total_slope_per_decade)
+  ) %>%
+  rename(`Country` = iso3, `Region` = region_who,
+         `DTP3 2000` = dtp3_2000, `DTP3 2023` = dtp3_2023,
+         `Trend (pp/decade)` = total_slope_per_decade)
+
+kable(slopes_top, caption = "Table 5. Top 10 country trajectories (2000-2023).") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"),
+                full_width = FALSE, position = "center")
+```
+
+These results highlight the African catch-up phenomenon: Niger, Sierra Leone, Uganda, Equatorial Guinea, Chad, and Republic of Congo all show gains exceeding 14 points per decade. Together with the AMRO and SEARO outperformers (India), these are the success stories of the Gavi era and national vaccination campaigns.
+
+**Bottom 10 trajectories:**
+
+```{r blups-bottom, results='asis'}
+slopes_bottom <- slopes_table %>%
+  arrange(total_slope_per_decade) %>%
+  head(10) %>%
+  select(iso3, region_who, dtp3_2000, dtp3_2023, total_slope_per_decade) %>%
+  mutate(
+    dtp3_2000 = sprintf("%.1f", dtp3_2000),
+    dtp3_2023 = sprintf("%.1f", dtp3_2023),
+    total_slope_per_decade = sprintf("%+.1f", total_slope_per_decade)
+  ) %>%
+  rename(`Country` = iso3, `Region` = region_who,
+         `DTP3 2000` = dtp3_2000, `DTP3 2023` = dtp3_2023,
+         `Trend (pp/decade)` = total_slope_per_decade)
+
+kable(slopes_bottom, caption = "Table 6. Bottom 10 country trajectories (2000-2023).") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"),
+                full_width = FALSE, position = "center")
+```
+
+The decline list mixes several distinct patterns. Ukraine's collapse (-23 pp/decade) reflects the cumulative effects of conflict since 2014. Conflict-affected states like Syria and Papua New Guinea show large declines. Several middle-income countries (Brazil, Panama, Ecuador) appear because they started near the ceiling (95-99%) and saw recent vaccine hesitancy episodes that pulled them down.
+
+## Visual evidence
+
+```{r fig5}
+fig_with_caption("fig05_spaghetti_trajectories.png", "Figure 5. Predicted country trajectories from mixed model M3, 2000-2023. Each grey line is a country; colored lines highlight selected examples.")
+```
+
+```{r fig6}
+fig_with_caption("fig06_slope_distribution.png", "Figure 6. Distribution of country-specific trajectories (BLUPs from M3). Each bar represents the number of countries within a given decade-trend range.")
+```
+
+The slope distribution (Figure 6) is roughly symmetric around zero, with most countries within ±10 points per decade. Africa (AFRO) dominates the right tail of strong improvements, while EURO countries cluster near zero (already at high coverage) and some specific countries occupy the negative tail. This visualization makes targeting decisions actionable: countries on negative trajectories deserve attention regardless of their current coverage level.
+
+## Interpretation in context
+
+The mixed model complements fixed-effects estimation by providing two outputs that fixed-effects cannot. First, it quantifies *how heterogeneous* country trajectories are (variance components). Second, it produces *individual estimates* for each country (BLUPs) that combine local data with the broader panel through partial pooling. For monitoring and evaluation purposes, this country-level ranking is far more actionable than a single average effect.
+
+# Causal analysis: did COVID-19 disrupt vaccination services?
+
+The descriptive analysis showed a clear global drop in DTP3 coverage during 2020-2021. But establishing that the COVID-19 pandemic *caused* this drop is methodologically more demanding. Since all countries were exposed simultaneously, a simple before-and-after comparison cannot distinguish the pandemic's effect from any other contemporaneous global shock.
+
+We address this challenge with a **continuous-treatment difference-in-differences design**. The key insight is that while all countries faced the virus, they responded with very different intensities. We exploit this cross-country variation in response stringency, measured by the Oxford COVID-19 Government Response Tracker (OxCGRT), to identify the causal effect of pandemic-related service disruption.
+
+## Identification strategy
+
+For each country $i$, we compute its average Stringency Index over 2020-2021, capturing the overall intensity of its non-pharmaceutical pandemic response (school closures, lockdowns, travel restrictions, gathering bans). This intensity is then standardized: 1 unit corresponds to one standard deviation across countries.
+
+The DiD specification estimates whether countries with stricter responses experienced larger DTP3 declines:
+
+$$
+\text{DTP3}_{it} = \beta \cdot (\text{Stringency}_i \times \text{Post}_t) + \alpha_i + \gamma_t + \varepsilon_{it}
+$$
+
+where $\text{Post}_t = 1$ for $t \geq 2020$, $\alpha_i$ are country fixed effects (absorbing the time-invariant level of stringency, which is colinear with country dummies), and $\gamma_t$ are year fixed effects (absorbing common shocks affecting all countries equally). The coefficient $\beta$ measures the differential effect of one standard deviation more stringency, comparing the post-2020 period to the 2015-2019 baseline.
+
+Standard errors are clustered at the country level. The sample restricts to 2015-2023 (1,548 observations, 172 countries), giving five years of pre-treatment data to validate parallel trends.
+
+## Main DiD result
+
+```{r did-main, results='asis'}
+did_main <- read_csv(here("output", "tables", "tab08_did_main.csv"),
+                     show_col_types = FALSE) %>%
+  mutate(across(where(is.numeric), ~ sprintf("%.3f", .))) %>%
+  select(term, estimate, std.error, statistic, p.value, conf.low, conf.high) %>%
+  rename(`Term` = term, `Estimate` = estimate, `SE` = std.error,
+         `t-statistic` = statistic, `p-value` = p.value,
+         `CI low` = conf.low, `CI high` = conf.high)
+
+kable(did_main, caption = "Table 7. Main DiD effect: stringency intensity × post-2020.") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"),
+                full_width = FALSE, position = "center")
+```
+
+The estimated effect is $\hat{\beta} = -1.04$ percentage points per standard deviation of stringency, significant at the 5% level ($p = 0.044$). In substantive terms: a country whose pandemic response was one standard deviation stricter than the global average lost roughly one additional DTP3 point in the post-2020 period, beyond the global baseline drop.
+
+This effect is statistically significant but moderate in magnitude. It suggests that disruption of vaccination services attributable to non-pharmaceutical interventions caused a measurable but limited setback, not a catastrophic collapse.
+
+## Validating parallel trends: event study
+
+The credibility of the DiD design rests on the assumption that, absent the COVID shock, countries with high and low stringency intensity would have followed parallel trajectories. We validate this with an event-study specification, replacing the single $\text{Post}_t$ dummy with year-specific interactions.
+
+```{r fig7}
+fig_with_caption("fig07_did_eventstudy.png", "Figure 7. Event study coefficients. Each point estimates the effect of one SD of stringency in year t, relative to 2019 (the omitted reference year). Vertical bars are 95% confidence intervals. Pre-2020 coefficients near zero validate the parallel trends assumption.")
+```
+
+The event study reveals three important patterns:
+
+1. **Pre-2020 coefficients are not significantly different from zero.** The coefficients for 2015 through 2018 hover around zero with overlapping confidence intervals, supporting the parallel trends assumption. There is no evidence that high-stringency and low-stringency countries were already diverging before COVID.
+2. **2020 and 2021 coefficients are negative** (-0.76 and -0.62 respectively). The signs are consistent with the main DiD: more stringent responses correlate with larger DTP3 drops. Individual coefficients are not significant due to limited statistical power per year, but the direction is consistent.
+3. **2022 coefficient is essentially zero** (+0.07), suggesting rapid recovery. The disruption appears to have been transitory rather than permanent. This optimistic finding aligns with WHO/UNICEF reports of catch-up vaccination campaigns implemented in 2022-2023.
+
+## Placebo test
+
+As a final robustness check, we run a placebo DiD on the pre-treatment period only (2015-2019), assigning a fake "post" treatment in 2017. If the parallel trends assumption holds, this placebo should produce no significant effect.
+
+```{r did-placebo, results='asis'}
+placebo_summary <- data.frame(
+  Specification = c("Main DiD (2015-2023, post = year>=2020)",
+                    "Placebo DiD (2015-2019 only, fake post = year>=2017)"),
+  Estimate = c("-1.04**", "-0.55"),
+  `p-value` = c("0.044", "0.229"),
+  Interpretation = c("Significant negative effect of stringency on DTP3",
+                     "No significant placebo effect, parallel trends supported")
+)
+
+kable(placebo_summary, caption = "Table 8. Main DiD vs. placebo test.") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"),
+                full_width = FALSE, position = "center")
+```
+
+The placebo coefficient is -0.55 with $p = 0.229$, so non-significant. This is reassuring: there is no detectable pre-trend that would invalidate our DiD design.
+
+## Visual evidence by intensity tertile
+
+To provide additional intuition for the continuous-treatment DiD, we group countries into tertiles of stringency intensity and plot their DTP3 trajectories:
+
+```{r fig8}
+fig_with_caption("fig08_did_intensity_tertiles.png", "Figure 8. DTP3 coverage trajectories by tertile of pandemic response intensity. The pink shaded area marks the 2020-2021 acute pandemic period.")
+```
+
+The graph shows that countries in all three tertiles experienced declines during 2020-2021, but the high-intensity group (T3) shows a slightly larger drop and a slower recovery. Visual evidence is consistent with the regression results.
+
+## Interpretation and limitations
+
+The findings support a measured causal interpretation. Countries with stricter pandemic responses experienced about 1 percentage point of additional DTP3 decline per standard deviation of stringency, with parallel trends and placebo tests both validating the design. The disruption was transitory, with full recovery apparent by 2022-2023.
+
+Several limitations deserve mention. Stringency intensity was not randomly assigned: countries that responded more strictly also faced different epidemic burdens, had different baseline health system capacities, and operated under different political constraints. The country fixed effects absorb time-invariant differences, but if any country-level factor evolved differently after 2020 in high-stringency countries, our coefficient would partially capture that as well.
+
+The continuous-treatment DiD, validated by parallel trends and a placebo test, is the most credible identification strategy available given that no country was a true "control" during the pandemic. The results should be interpreted as a *plausible causal estimate* of the disruption channel through non-pharmaceutical interventions, distinguished from the broader effects of the pandemic itself.
+
+# Geographic visualization
+
+Statistical models identify mean effects and individual trajectories, but spatial patterns are often most legible on a map. Four choropleths summarize the project's findings geographically.
+
+## Current coverage in 2023
+
+```{r fig9}
+fig_with_caption("fig09_map_dtp3_2023.png", "Figure 9. DTP3 coverage worldwide in 2023. Plasma scale: yellow indicates high coverage, dark purple indicates low coverage.")
+```
+
+The 2023 map confirms the geography of left-behind countries identified earlier in the analysis. The lowest-coverage band stretches across the Sahel, the Horn of Africa, parts of South Asia (Pakistan, Afghanistan), and Papua New Guinea. The Western world, Latin America, and most of East Asia maintain high coverage. Notable exceptions include Ukraine (conflict-related decline) and several Pacific small island states with smaller absolute populations but high vulnerability.
+
+## Recent dynamics: change 2010-2023
+
+```{r fig10}
+fig_with_caption("fig10_map_change_2010_2023.png", "Figure 10. Change in DTP3 coverage between 2010 and 2023. Green = improvement, red = decline. Values are capped at +/- 30 pp for legibility.")
+```
+
+This map captures the recent dynamics that the static 2023 picture cannot show. Sub-Saharan Africa stands out with broad green tones, reflecting the sustained progress visible in the regional trends figure. Striking declines in Ukraine, Venezuela, Pakistan, the Philippines, and Brazil reflect either conflict, governance crises, or vaccine hesitancy episodes.
+
+## Mixed-model national trajectories
+
+```{r fig11}
+fig_with_caption("fig11_map_blups_slopes.png", "Figure 11. National DTP3 trajectories per decade, 2000-2023. Mixed-model BLUPs: country-specific slopes from random-intercept-and-slope estimation.")
+```
+
+Where Figure 10 displays raw observed change, this map displays the *model-estimated* slopes from the mixed model. The advantage is regularization: countries with noisy data are pulled toward the global mean, producing a smoother and more reliable picture of underlying trajectories. The geographic pattern is broadly consistent with Figure 10 but with several notable refinements. Some countries with extreme observed changes (driven by single-year fluctuations) appear less extreme in the BLUPs estimate, while countries with stable progress appear more clearly.
+
+## COVID-19 disruption
+
+```{r fig12}
+fig_with_caption("fig12_map_covid_disruption.png", "Figure 12. DTP3 change between 2019 and 2021 (acute COVID period). Red = decline during the pandemic.")
+```
+
+This final map shows where the pandemic hit hardest. Several patterns emerge. South-East Asia (notably the Philippines, Indonesia, and Pakistan) and parts of the Pacific show the most pronounced declines, consistent with the SEARO and WPRO regional dips identified earlier. Europe and parts of the Americas show smaller disruptions, while a handful of countries actually saw improvements during this period (catch-up vaccination after 2020 dips, improved data reporting, or both). The map provides a complementary geographical view of the heterogeneity exploited by our DiD design.
+
+# Conclusion
+
+This project assembled a 1980-2023 country-year panel of DTP3 coverage, World Bank covariates, and COVID-19 stringency data. It applied four complementary methodologies to characterize the determinants and dynamics of childhood immunization worldwide.
+
+**Key empirical findings.** Within-country fertility declines and GDP growth are the strongest structural determinants of rising DTP3 coverage. Cross-country, low health expenditure and high fertility are the dominant predictors of being below the WHO 80% threshold. National trajectories vary widely: Niger, Sierra Leone, Uganda, and Bangladesh have gained more than 12 points per decade since 2000, while Ukraine, Papua New Guinea, and Azerbaijan have lost more than 10 points. The COVID-19 pandemic produced a measurable but moderate disruption (about 1 pp per SD of stringency intensity), and recovery was largely complete by 2022-2023.
+
+**Methodological contribution.** The project demonstrates how complementary methods can illuminate different facets of the same data. Panel fixed effects identify within-country causal effects under standard assumptions. Logit with regional FE produces predictive effects useful for targeting. Mixed models recover country-specific trajectories and rankings. A continuous-treatment DiD with event-study design and placebo testing establishes a plausible causal estimate of pandemic-related service disruption. Choropleth maps make geographic patterns immediately legible.
+
+**Practical implications.** For Gavi, WHO/UNICEF, and INGOs, the analysis suggests that fertility transitions, sustained health system investments, and post-COVID catch-up campaigns are the three most actionable levers. The countries identified as on negative trajectories (regardless of current coverage level) deserve priority attention, since their declining patterns are difficult to reverse without targeted intervention.
+
+**Limitations.** The DTP3 indicator captures only one dimension of immunization performance and may obscure issues with newer vaccines (HPV, COVID-19 itself). The continuous-treatment DiD relies on parallel-trends assumptions that, while validated by placebo tests, cannot exclude all confounding. Country-level analysis cannot capture sub-national heterogeneity that often drives local equity concerns.
+
+# Reproducibility
+
+All analyses are fully reproducible from the public GitHub repository.
+
+```bash
+git clone https://github.com/KillianFoubert/vaccine-coverage-analysis
+cd vaccine-coverage-analysis
+Rscript run_all.R
+```
+
+For detailed methodological explanations, see [`docs/sessions_explained.md`](https://github.com/KillianFoubert/vaccine-coverage-analysis/blob/main/docs/sessions_explained.md).
+
+---
+
+*Killian Foubert, PhD · GitHub: [@KillianFoubert](https://github.com/KillianFoubert)*
