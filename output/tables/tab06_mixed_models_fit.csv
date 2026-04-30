@@ -1,0 +1,4 @@
+model,AIC,BIC,logLik
+M1 (intercept random),30984.1,31009.7,-15488
+M2 (intercept + slope random),29467.1,29505.5,-14727.5
+M3 (M2 + covariates),29312.5,29376.5,-14646.2

@@ -1,0 +1,18 @@
+model,term,estimate,std.error,statistic,p.value,conf.low,conf.high
+1. Pooled OLS,(Intercept),93.5643,7.7493,12.0739,0,78.278,108.8506
+1. Pooled OLS,log_gdp_pc,0.9819,0.864,1.1364,0.2572,-0.7225,2.6863
+1. Pooled OLS,health_exp,0.3512,0.2077,1.6907,0.0925,-0.0585,0.7609
+1. Pooled OLS,urban_pct,-0.0308,0.0442,-0.6969,0.4867,-0.1181,0.0564
+1. Pooled OLS,fertility,-5.2935,0.8057,-6.5699,0,-6.8829,-3.7042
+2. Country FE,log_gdp_pc,4.1548,1.6804,2.4725,0.0143,0.84,7.4696
+2. Country FE,health_exp,-0.1378,0.1909,-0.722,0.4712,-0.5144,0.2387
+2. Country FE,urban_pct,0.0505,0.1262,0.3998,0.6897,-0.1985,0.2994
+2. Country FE,fertility,-3.8724,1.0561,-3.6666,3e-4,-5.9557,-1.7891
+3. Country + Year FE,log_gdp_pc,5.7121,2.0693,2.7604,0.0063,1.6303,9.7939
+3. Country + Year FE,health_exp,0.1573,0.177,0.8882,0.3756,-0.192,0.5065
+3. Country + Year FE,urban_pct,0.1459,0.1201,1.215,0.2259,-0.091,0.3827
+3. Country + Year FE,fertility,-5.7977,1.1032,-5.2556,0,-7.9738,-3.6217
+4. Two-way FE (reference),log_gdp_pc,5.7121,2.0693,2.7604,0.0063,1.6303,9.7939
+4. Two-way FE (reference),health_exp,0.1573,0.177,0.8882,0.3756,-0.192,0.5065
+4. Two-way FE (reference),urban_pct,0.1459,0.1201,1.215,0.2259,-0.091,0.3827
+4. Two-way FE (reference),fertility,-5.7977,1.1032,-5.2556,0,-7.9738,-3.6217

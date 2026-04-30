@@ -1,0 +1,10 @@
+term,estimate,std.error,statistic,p.value,conf.low,conf.high,year
+stringency_z:year_factor2015,1.0652,0.9266,1.1496,0.2519,-0.7638,2.8942,2015
+stringency_z:year_factor2016,1.0325,0.8682,1.1892,0.236,-0.6813,2.7462,2016
+stringency_z:year_factor2017,0.6214,0.7052,0.8812,0.3794,-0.7706,2.0134,2017
+stringency_z:year_factor2018,0.6552,0.6355,1.031,0.304,-0.5993,1.9097,2018
+stringency_z:year_factor2019,0.2186,0.6662,0.3282,0.7432,-1.0964,1.5337,2019
+stringency_z:year_factor2019 (reference),0,0,NA,NA,0,0,2019
+stringency_z:year_factor2020,-0.7559,0.6166,-1.2259,0.2219,-1.9729,0.4612,2020
+stringency_z:year_factor2021,-0.6218,0.6152,-1.0107,0.3136,-1.8362,0.5926,2021
+stringency_z:year_factor2022,0.0733,0.4769,0.1538,0.878,-0.868,1.0147,2022
