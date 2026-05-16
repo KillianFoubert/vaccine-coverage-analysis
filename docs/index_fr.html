@@ -2648,7 +2648,7 @@ display: none;
 <h1 class="title toc-ignore">Couverture vaccinale infantile dans le
 monde, 1980-2023</h1>
 <h4 class="author">Killian Foubert, PhD</h4>
-<h4 class="date">April 2026</h4>
+<h4 class="date">May 2026</h4>
 
 </div>
 
@@ -3131,17 +3131,27 @@ PIB d’une façon qui biaisait le coefficient vers le bas dans la
 spécification simple. L’inclusion des FE année ne relève donc pas
 seulement de la prudence méthodologique : elle modifie substantiellement
 l’interprétation économique.</p>
-<p><strong>Les dépenses de santé et l’urbanisation perdent leur
-significativité dès lors que les FE pays sont inclus.</strong> Ce n’est
-pas un échec, mais un résultat substantiellement intéressant. Leur effet
-apparent en pooled OLS était en fait entièrement absorbé par les
-caractéristiques pays invariantes. Concrètement : les pays riches
-dépensent plus en santé <em>et</em> affichent une meilleure couverture
-DTP3, mais augmenter les dépenses de santé d’un pays donné dans le temps
-ne se traduit pas mécaniquement par une amélioration de la couverture.
-La qualité institutionnelle, la capacité du système et la gouvernance
-médiatisent vraisemblablement la relation, sans qu’aucune de ces
-dimensions ne soit captée par un simple ratio de dépenses.</p>
+<p><strong>Les dépenses de santé perdent leur significativité une fois
+les FE pays inclus</strong> (β = 0,35*, p &lt; 0,10 en pooled OLS → β =
+-0,14, n.s. avec FE pays). Substantiellement, c’est intéressant : les
+pays riches dépensent plus en santé et ont une meilleure couverture
+DTP3, mais augmenter les dépenses de santé d’un pays dans le temps ne se
+traduit pas mécaniquement par une hausse de la couverture. La qualité
+institutionnelle, la capacité du système et la gouvernance absorbent
+probablement la relation, aucune de ces dimensions n’étant capturée par
+un simple ratio de dépenses.</p>
+<p><strong>L’urbanisation n’est un prédicteur significatif dans aucune
+spécification</strong>, ni en pooled OLS (β = -0,03, n.s.), ni avec FE
+pays (β = 0,05, n.s.), ni en two-way FE (β = 0,15, n.s.). Ce résultat
+nul reflète deux faits : (i) l’urbanisation présente très peu de
+variation intra-pays sur 24 ans, laissant peu de variance identifiante
+une fois les FE pays absorbés ; (ii) net du revenu et de la fécondité,
+l’effet de l’urbanisation sur la couverture vaccinale apparaît
+véritablement ambigu, les poches concentrées de non-vaccinés dans les
+bidonvilles compensant potentiellement les avantages logistiques de la
+densité. L’effet marginal positif détecté dans le modèle logit (Tableau
+3, +0,2 pp) est cohérent avec cette interprétation : faible, de signe
+inverse à l’attente initiale, et à peine significatif.</p>
 </div>
 <div id="notes-méthodologiques" class="section level2">
 <h2>Notes méthodologiques</h2>
