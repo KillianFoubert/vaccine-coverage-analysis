@@ -2648,7 +2648,7 @@ display: none;
 <h1 class="title toc-ignore">Global Childhood Vaccination Coverage,
 1980-2023</h1>
 <h4 class="author">Killian Foubert, PhD</h4>
-<h4 class="date">April 2026</h4>
+<h4 class="date">May 2026</h4>
 
 </div>
 
@@ -3119,16 +3119,26 @@ cycles) were correlated with cross-country GDP variation in ways that
 biased the coefficient downward in the simpler specification. Including
 year FEs is therefore not just methodological prudence: it meaningfully
 reshapes the economic interpretation.</p>
-<p><strong>Health expenditure and urbanization are not significant once
-country FEs are included.</strong> This is substantively interesting
-rather than a null result. Their apparent effect in pooled OLS was
-entirely absorbed by time-invariant country characteristics. In
-practical terms: richer countries tend to spend more on health
-<em>and</em> have higher DTP3 coverage, but increasing one country’s
-health expenditure over time does not mechanically translate into higher
-coverage. Institutional quality, system capacity, and governance likely
-mediate the relationship, none of which is captured by a simple
-expenditure ratio.</p>
+<p><strong>Health expenditure loses its significance once country FEs
+are included</strong> (β = 0.35*, p &lt; 0.10 in pooled OLS → β = -0.14,
+n.s. in country FE). This is substantively interesting: richer countries
+tend to spend more on health and have higher DTP3 coverage, but raising
+health spending within a given country over time does not mechanically
+translate into higher coverage. Institutional quality, system capacity,
+and governance likely mediate the relationship, none of which is
+captured by a simple expenditure ratio.</p>
+<p><strong>Urbanization is not a significant predictor in any
+specification</strong>. Neither in pooled OLS (β = -0.03, n.s.) nor
+under country fixed effects (β = 0.05, n.s.) nor two-way FE (β = 0.15,
+n.s.). This null result reflects two facts: (i) urbanization shows very
+limited within-country variation over a 24-year horizon, leaving little
+identifying variance after country FE absorption; (ii) net of income and
+fertility, urbanization’s effect on immunization coverage appears
+genuinely ambiguous, with concentrated unvaccinated pockets in informal
+settlements potentially offsetting the logistical advantages of density.
+The positive marginal effect detected in the logit model (Table 3, +0.2
+pp) is consistent with this interpretation: small, sign-reversed from
+naive expectation, and barely significant.</p>
 </div>
 <div id="methodological-notes" class="section level2">
 <h2>Methodological notes</h2>
